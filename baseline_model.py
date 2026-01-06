@@ -83,41 +83,14 @@ def derive_point_flags(df: pd.DataFrame) -> pd.DataFrame:
 def build_baseline_Xy(df: pd.DataFrame):
     """
     Target y: Player1 wins point? (point_victor == 1)
-    Features: server, score state, leverage flags, derived flags, progress proxy
+    Features (minimal baseline): server + tiebreak indicator only
     """
     y = (df["point_victor"] == 1).astype(int).to_numpy()
 
-    derived = derive_point_flags(df)
-
     # Pre-point context features (safe)
     X = pd.DataFrame({
-        # Serve context
+        # Serve context (dominant pre-point factor)
         "is_p1_serving": (df["server"] == 1).astype(int),
-
-        # Match state
-        "set_no": df["set_no"].astype(int),
-        "p1_sets": df["p1_sets"].astype(int),
-        "p2_sets": df["p2_sets"].astype(int),
-
-        "game_no": df["game_no"].astype(int),
-        "p1_games": df["p1_games"].astype(int),
-        "p2_games": df["p2_games"].astype(int),
-
-        # Point score state (categorical as strings)
-        "p1_score": df["p1_score"].astype(str),
-        "p2_score": df["p2_score"].astype(str),
-
-        # Given leverage flags (pre-point)
-        "p1_break_pt": df["p1_break_pt"].astype(int),
-        "p2_break_pt": df["p2_break_pt"].astype(int),
-
-        # Derived leverage flags
-        "is_game_point_p1": derived["is_game_point_p1"].astype(int),
-        "is_game_point_p2": derived["is_game_point_p2"].astype(int),
-        "is_set_point_p1": derived["is_set_point_p1"].astype(int),
-        "is_set_point_p2": derived["is_set_point_p2"].astype(int),
-        "is_match_point_p1": derived["is_match_point_p1"].astype(int),
-        "is_match_point_p2": derived["is_match_point_p2"].astype(int),
 
         # Tiebreak
         "is_tiebreak": df["is_tiebreak"].astype(int),
@@ -135,7 +108,9 @@ def train_xgb_baseline(X: pd.DataFrame, y: np.ndarray, groups: np.ndarray):
     Trains XGBoost on match-level split (no leakage across points of same match).
     Returns trained booster + encoder so you can transform new points the same way.
     """
-    cat_cols = ["p1_score", "p2_score"]
+    # Minimal baseline uses numeric-only features, but keep this generic:
+    possible_cat_cols = ["p1_score", "p2_score"]
+    cat_cols = [c for c in possible_cat_cols if c in X.columns]
     num_cols = [c for c in X.columns if c not in cat_cols]
 
     splitter = GroupShuffleSplit(n_splits=1, test_size=0.25, random_state=42)
@@ -144,20 +119,23 @@ def train_xgb_baseline(X: pd.DataFrame, y: np.ndarray, groups: np.ndarray):
     X_tr, y_tr = X.iloc[tr_idx], y[tr_idx]
     X_te, y_te = X.iloc[te_idx], y[te_idx]
 
-    # One-hot for categorical score columns (support older/newer sklearn)
-    try:
-        enc = OneHotEncoder(handle_unknown="ignore", sparse_output=True)
-    except TypeError:
-        enc = OneHotEncoder(handle_unknown="ignore", sparse=True)
-
-    Xtr_cat = enc.fit_transform(X_tr[cat_cols])
-    Xte_cat = enc.transform(X_te[cat_cols])
-
     Xtr_num = csr_matrix(X_tr[num_cols].to_numpy())
     Xte_num = csr_matrix(X_te[num_cols].to_numpy())
 
-    Xtr = hstack([Xtr_num, Xtr_cat], format="csr")
-    Xte = hstack([Xte_num, Xte_cat], format="csr")
+    enc = None
+    if len(cat_cols) > 0:
+        # One-hot for categorical score columns (support older/newer sklearn)
+        try:
+            enc = OneHotEncoder(handle_unknown="ignore", sparse_output=True)
+        except TypeError:
+            enc = OneHotEncoder(handle_unknown="ignore", sparse=True)
+        Xtr_cat = enc.fit_transform(X_tr[cat_cols])
+        Xte_cat = enc.transform(X_te[cat_cols])
+        Xtr = hstack([Xtr_num, Xtr_cat], format="csr")
+        Xte = hstack([Xte_num, Xte_cat], format="csr")
+    else:
+        Xtr = Xtr_num
+        Xte = Xte_num
 
     dtr = xgb.DMatrix(Xtr, label=y_tr)
     dte = xgb.DMatrix(Xte, label=y_te)
@@ -192,9 +170,12 @@ def train_xgb_baseline(X: pd.DataFrame, y: np.ndarray, groups: np.ndarray):
 
 
 def predict_proba(booster, enc, num_cols, cat_cols, X: pd.DataFrame) -> np.ndarray:
-    X_cat = enc.transform(X[cat_cols])
     X_num = csr_matrix(X[num_cols].to_numpy())
-    Xm = hstack([X_num, X_cat], format="csr")
+    if enc is not None and len(cat_cols) > 0:
+        X_cat = enc.transform(X[cat_cols])
+        Xm = hstack([X_num, X_cat], format="csr")
+    else:
+        Xm = X_num
     dm = xgb.DMatrix(Xm)
     return booster.predict(dm)
 
