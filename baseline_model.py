@@ -9,7 +9,6 @@ from scipy.sparse import csr_matrix, hstack
 import xgboost as xgb
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
-from matplotlib.lines import Line2D
 
 
 # -----------------------------
@@ -83,7 +82,7 @@ def derive_point_flags(df: pd.DataFrame) -> pd.DataFrame:
 def build_baseline_Xy(df: pd.DataFrame):
     """
     Target y: Player1 wins point? (point_victor == 1)
-    Features (minimal baseline): server + tiebreak indicator only
+    Features (minimal baseline): server + point score + tiebreak indicator
     """
     y = (df["point_victor"] == 1).astype(int).to_numpy()
 
@@ -91,6 +90,10 @@ def build_baseline_Xy(df: pd.DataFrame):
     X = pd.DataFrame({
         # Serve context (dominant pre-point factor)
         "is_p1_serving": (df["server"] == 1).astype(int),
+
+        # Point score state (categorical)
+        "p1_score": df["p1_score"].astype(str),
+        "p2_score": df["p2_score"].astype(str),
 
         # Tiebreak
         "is_tiebreak": df["is_tiebreak"].astype(int),

@@ -18,6 +18,7 @@ pip install pandas numpy scikit-learn xgboost matplotlib scipy
 ### How it works
 1. Baseline model (XGBoost) predicts `P(Player1 wins current point)` using pre-point context:
    - Server
+   - Point score (`p1_score`, `p2_score`)
    - Tiebreak indicator
 2. Performance signal: residual = `(actual outcome ∈ {0,1}) − (predicted probability)`.
 3. Flow curve: exponentially weighted moving average (EWMA) of residuals.
