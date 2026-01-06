@@ -16,15 +16,33 @@ pip install pandas numpy scikit-learn xgboost matplotlib scipy
 ```
 
 ### How it works
-1. Baseline model (XGBoost) predicts `P(Player1 wins current point)` using pre-point context:
-   - Server
-   - Point score (`p1_score`, `p2_score`)
-   - Games/sets score (`p1_games`, `p2_games`, `p1_sets`, `p2_sets`)
-   - Tiebreak indicator
-2. Performance signal: residual = `(actual outcome ∈ {0,1}) − (predicted probability)`.
-3. Flow curve: exponentially weighted moving average (EWMA) of residuals.
-   - Positive flow ⇒ Player 1 outperforming baseline expectation
-   - Negative flow ⇒ Player 2 outperforming baseline expectation
+
+**Baseline Model (XGBoost):**
+Predicts `P(Player1 wins current point)` using minimal pre-point context:
+- **Server** (`is_p1_serving`): Dominant factor (~60-70% serve win rate)
+- **Point score** (`p1_score`, `p2_score`): Captures in-game leverage (40-0 vs 0-40)
+- **Set score** (`p1_sets`, `p2_sets`): Captures match-level pressure
+
+**Rationale for minimal baseline:**
+- We exclude games score (`p1_games`, `p2_games`) because it's highly correlated with point score and would over-explain match state, leaving less room for "momentum" to show in residuals.
+- This baseline captures expected performance from rules/context, leaving residuals to capture actual performance above/below expectation.
+
+**Performance Metrics (3 complementary views):**
+
+1. **Weighted Momentum** (quality-adjusted EWMA, α=0.20, reset per set):
+   - Answers: "Who is playing better RIGHT NOW?"
+   - Weights longer rallies and break points higher (more skill contest)
+   - Responsive (~3.5 point half-life) but resets per set for independence
+
+2. **Set-Level Performance** (cumulative residual, reset per set):
+   - Answers: "Who outperformed in each set?"
+   - Direct sum: positive = P1 better, negative = P2 better
+   - No smoothing bias, clear set-by-set evaluation
+
+3. **Sustained Trend** (rolling mean, 15 points):
+   - Answers: "What's the medium-term momentum?"
+   - Smooth game-level view (~1 game window)
+   - Shows sustained runs across sets
 
 ### Running
 ```bash
