@@ -82,7 +82,7 @@ def derive_point_flags(df: pd.DataFrame) -> pd.DataFrame:
 def build_baseline_Xy(df: pd.DataFrame):
     """
     Target y: Player1 wins point? (point_victor == 1)
-    Features (minimal baseline): server + point score + tiebreak indicator
+    Features (minimal baseline): server + point score + games/sets score + tiebreak indicator
     """
     y = (df["point_victor"] == 1).astype(int).to_numpy()
 
@@ -94,6 +94,12 @@ def build_baseline_Xy(df: pd.DataFrame):
         # Point score state (categorical)
         "p1_score": df["p1_score"].astype(str),
         "p2_score": df["p2_score"].astype(str),
+
+        # Games/Sets score (current set + match)
+        "p1_games": df["p1_games"].astype(int),
+        "p2_games": df["p2_games"].astype(int),
+        "p1_sets": df["p1_sets"].astype(int),
+        "p2_sets": df["p2_sets"].astype(int),
 
         # Tiebreak
         "is_tiebreak": df["is_tiebreak"].astype(int),
